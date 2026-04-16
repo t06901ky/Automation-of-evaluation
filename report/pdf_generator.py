@@ -1,14 +1,10 @@
 """PDF レポート生成 — WeasyPrint で HTML → PDF 変換。
 
-セクション構成:
-  1. 表紙（評価対象者・評価期間・総合スコア）
-  2. グレード定義の確認
-  3. 定量 KPI 達成状況（Tier1・Tier2）
-  4. アクションアイテム進捗
-  5. 定性評価サマリ（Slack/Drive/AI 活用）
-  6. NOT 要件の確認（適切に除外されたことの明示）
-  7. 総合評価・AI コメント
-  8. 来月の推奨アクション
+構成:
+  1. サマリ（対象者・期間・総合スコア・一言評価）
+  2. グレード定義に対する評価
+  3. カテゴリ別スコアと根拠
+  4. 来月の推奨アクション
 """
 
 from __future__ import annotations
@@ -32,44 +28,36 @@ CSS = """\
 body {
     font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
     font-size: 11px;
-    line-height: 1.6;
+    line-height: 1.7;
     color: #222;
 }
-h1 { font-size: 22px; color: #1a365d; border-bottom: 3px solid #1a365d; padding-bottom: 8px; }
-h2 { font-size: 16px; color: #2c5282; margin-top: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
-h3 { font-size: 13px; color: #2d3748; margin-top: 16px; }
-table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+h1 { font-size: 20px; color: #1a365d; border-bottom: 3px solid #1a365d; padding-bottom: 6px; margin-bottom: 16px; }
+h2 { font-size: 14px; color: #2c5282; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; }
 th, td { border: 1px solid #cbd5e0; padding: 6px 10px; text-align: left; font-size: 10px; }
 th { background: #edf2f7; font-weight: bold; }
 .score-box {
     display: inline-block; background: #1a365d; color: #fff;
-    font-size: 28px; font-weight: bold; padding: 12px 24px; border-radius: 8px;
-    margin: 8px 0;
+    font-size: 32px; font-weight: bold; padding: 10px 28px; border-radius: 8px;
 }
-.score-bar {
-    height: 18px; border-radius: 4px; margin: 4px 0;
-}
-.score-bar-bg { background: #e2e8f0; width: 100%; }
-.score-bar-fill { background: #3182ce; }
-.not-requirement { background: #fff5f5; border-left: 4px solid #fc8181; padding: 12px; margin: 12px 0; }
-.cover-page { text-align: center; padding-top: 120px; }
-.section { page-break-inside: avoid; }
-ul { margin: 4px 0; padding-left: 20px; }
-li { margin: 2px 0; }
-.meta { color: #718096; font-size: 10px; }
+.header { text-align: center; margin-bottom: 20px; }
+.header p { margin: 4px 0; color: #718096; }
+.grade-box { background: #f7fafc; padding: 10px 14px; border-radius: 4px; font-size: 10px; margin: 8px 0; }
+.score-bar-bg { height: 14px; border-radius: 4px; background: #e2e8f0; width: 100%; margin: 4px 0; }
+.score-bar-fill { height: 14px; border-radius: 4px; }
+.not-req { background: #fff5f5; border-left: 4px solid #fc8181; padding: 8px 12px; margin: 10px 0; font-size: 10px; }
+ul { margin: 4px 0; padding-left: 18px; }
+li { margin: 2px 0; font-size: 10px; }
+.meta { color: #718096; font-size: 9px; margin-top: 20px; }
+.rationale { font-size: 10px; color: #4a5568; margin: 4px 0 12px 0; }
 """
 
 
 def generate_pdf(data: dict[str, Any], output_dir: Path) -> Path:
-    """評価データから PDF を生成して保存パスを返す。"""
     output_dir.mkdir(parents=True, exist_ok=True)
-
     html_content = _build_html(data)
-    filename = (
-        f"{data['period_label'].replace(' ', '_')}_{data['target_name']}_evaluation.pdf"
-    )
+    filename = f"{data['period_label'].replace(' ', '_')}_{data['target_name']}_evaluation.pdf"
     pdf_path = output_dir / filename
-
     HTML(string=html_content).write_pdf(str(pdf_path))
     return pdf_path
 
@@ -80,196 +68,134 @@ def _build_html(d: dict[str, Any]) -> str:
 <html lang="ja">
 <head><meta charset="utf-8"><style>{CSS}</style></head>
 <body>
-
-{_section_cover(d)}
+{_section_header(d)}
 {_section_grade(d)}
-{_section_kpi(d)}
-{_section_action_items(d)}
-{_section_qualitative(d)}
+{_section_scores(d)}
 {_section_not_requirements(d)}
-{_section_overall(d)}
-{_section_next_actions(d)}
-
-<p class="meta">生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+{_section_actions(d)}
+<p class="meta">生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | VALANCE 評価自動化システム</p>
 </body></html>"""
 
 
-def _section_cover(d: dict[str, Any]) -> str:
+def _section_header(d: dict[str, Any]) -> str:
+    qual = d.get("qualitative", {})
+    strengths = qual.get("strengths", [])
+    improvements = qual.get("improvements", [])
+    summary_points = []
+    if strengths:
+        summary_points.append(f"<strong>強み:</strong> {strengths[0]}")
+    if improvements:
+        summary_points.append(f"<strong>課題:</strong> {improvements[0]}")
+    summary_html = "<br>".join(summary_points) if summary_points else ""
+
     return f"""\
-<div class="cover-page">
+<div class="header">
     <h1>月次評価レポート</h1>
-    <p style="font-size:18px; margin-top:24px;">{_esc(d['target_name'])} ({_esc(d.get('target_grade', ''))})</p>
-    <p style="font-size:14px; color:#718096;">評価期間: {_esc(d['period_label'])}</p>
-    <div class="score-box">{d['overall_score']:.1f} / 100</div>
-    <p style="font-size:12px; color:#718096; margin-top:4px;">総合スコア</p>
+    <p style="font-size:16px; color:#222;"><strong>{_esc(d['target_name'])}</strong> ({_esc(d.get('target_grade', ''))})</p>
+    <p>評価期間: {_esc(d['period_label'])}</p>
+    <div class="score-box">{d['overall_score']:.1f}<span style="font-size:16px;"> / 100</span></div>
 </div>
-<div style="page-break-after: always;"></div>"""
+<div style="text-align:center; margin-bottom:16px;">
+    <p style="font-size:11px; color:#4a5568;">{summary_html}</p>
+</div>"""
 
 
 def _section_grade(d: dict[str, Any]) -> str:
-    grade_text = _esc(d.get("grade_definition", "未取得")).replace("\n", "<br>")
+    grade_text = _esc(d.get("grade_definition", "")).replace("\n", "<br>")
+    # 長すぎる場合は切り詰め
+    if len(grade_text) > 800:
+        grade_text = grade_text[:800] + "…"
     return f"""\
-<div class="section">
-    <h2>1. グレード定義の確認</h2>
-    <p><strong>グレード:</strong> {_esc(d.get('target_grade', ''))}</p>
-    <div style="background:#f7fafc; padding:12px; border-radius:4px; font-size:10px;">
-        {grade_text}
-    </div>
-</div>"""
+<h2>グレード定義 ({_esc(d.get('target_grade', ''))})</h2>
+<div class="grade-box">{grade_text}</div>"""
 
 
-def _section_kpi(d: dict[str, Any]) -> str:
-    kpi = d.get("kpi_scores", {})
-    rows_html = ""
-    for tier_key, tier_label in [("tier1", "Tier1"), ("tier2", "Tier2")]:
-        tier = kpi.get(tier_key, {})
-        for detail in tier.get("details", []):
-            rate_pct = f"{detail.get('achievement_rate', 0) * 100:.1f}%"
-            rows_html += (
-                f"<tr><td>{tier_label}</td><td>{_esc(str(detail.get('name', '')))}</td>"
-                f"<td style='text-align:right'>{detail.get('plan', '—')}</td>"
-                f"<td style='text-align:right'>{detail.get('actual', '—')}</td>"
-                f"<td style='text-align:right'>{rate_pct}</td>"
-                f"<td style='text-align:right'>{detail.get('score', '—')}</td></tr>"
-            )
-    t1_score = kpi.get("tier1", {}).get("score", "—")
-    t2_score = kpi.get("tier2", {}).get("score", "—")
-    return f"""\
-<div class="section">
-    <h2>2. 定量 KPI 達成状況</h2>
-    <p><strong>a. Tier1 KPI スコア:</strong> {t1_score} / 100 (重み 30%)</p>
-    {_score_bar(t1_score if isinstance(t1_score, (int, float)) else 50)}
-    <p><strong>b. Tier2 KPI スコア:</strong> {t2_score} / 100 (重み 25%)</p>
-    {_score_bar(t2_score if isinstance(t2_score, (int, float)) else 50)}
-    <table>
-        <tr><th>Tier</th><th>指標</th><th>計画</th><th>実績</th><th>達成率</th><th>スコア</th></tr>
-        {rows_html if rows_html else '<tr><td colspan="6">KPI データ未入力 or 実績未取得</td></tr>'}
-    </table>
-</div>"""
-
-
-def _section_action_items(d: dict[str, Any]) -> str:
+def _section_scores(d: dict[str, Any]) -> str:
     qual = d.get("qualitative", {})
-    c = qual.get("c_action_items", {})
-    score = c.get("score", "—")
-    rationale = _esc(c.get("rationale", "")).replace("\n", "<br>")
-    action_text = _esc(d.get("action_items_text", "未取得")).replace("\n", "<br>")
-    return f"""\
-<div class="section">
-    <h2>3. アクションアイテム進捗</h2>
-    <p><strong>c. スコア:</strong> {score} / 100 (重み 20%)</p>
+    breakdown = d.get("score_breakdown", {})
+
+    categories = [
+        ("a", "Tier1 KPI (売上・ARR・OTR・HC)", "30%", "a_tier1_kpi"),
+        ("b", "Tier2 KPI (churn・MQL・SQL・コスト)", "25%", "b_tier2_kpi"),
+        ("c", "アクションアイテム完了", "20%", "c_action_items"),
+        ("d", "業務定性 (Slack・Drive・MTG)", "15%", "d_business_qualitative"),
+        ("e", "AI活用・コミュニケーション", "10%", "e_ai_and_communication"),
+    ]
+
+    # スコアテーブル
+    rows = ""
+    for key, label, weight, _ in categories:
+        score = breakdown.get(key, {}).get("score", "—")
+        weighted = breakdown.get(key, {}).get("weighted", "—")
+        rows += f"<tr><td><strong>{key}.</strong> {label}</td><td>{weight}</td><td>{score}</td><td>{weighted}</td></tr>"
+    rows += f'<tr style="font-weight:bold; background:#edf2f7;"><td>総合</td><td>100%</td><td colspan="2">{d["overall_score"]:.1f}</td></tr>'
+
+    table = f"""\
+<h2>カテゴリ別スコア</h2>
+<table>
+<tr><th>カテゴリ</th><th>重み</th><th>スコア</th><th>加重</th></tr>
+{rows}
+</table>"""
+
+    # 各カテゴリの根拠
+    details = ""
+    for key, label, weight, qual_key in categories:
+        q = qual.get(qual_key, {})
+        score = q.get("score", "—")
+        rationale = _esc(q.get("rationale", "データなし"))
+        color = "#38a169" if isinstance(score, (int, float)) and score >= 70 else "#d69e2e" if isinstance(score, (int, float)) and score >= 50 else "#e53e3e"
+
+        details += f"""\
+<div style="margin-top:10px;">
+    <strong>{key}. {label}</strong> — <span style="color:{color}; font-weight:bold;">{score} / 100</span>
     {_score_bar(score if isinstance(score, (int, float)) else 50)}
-    <h3>目標 (事業計画より)</h3>
-    <div style="background:#f7fafc; padding:8px; font-size:10px;">{action_text}</div>
-    <h3>評価根拠</h3>
-    <p>{rationale}</p>
+    <p class="rationale">{rationale}</p>
 </div>"""
 
-
-def _section_qualitative(d: dict[str, Any]) -> str:
-    qual = d.get("qualitative", {})
-    d_data = qual.get("d_business_qualitative", {})
-    e_data = qual.get("e_ai_and_communication", {})
-    slack = d.get("slack_data", {})
-    drive = d.get("drive_data", {})
-    return f"""\
-<div class="section">
-    <h2>4. 定性評価サマリ</h2>
-    <h3>d. 業務定性 (Slack 貢献・Drive 成果物・MTG の質) — {d_data.get('score', '—')} / 100 (重み 15%)</h3>
-    {_score_bar(d_data.get('score', 50) if isinstance(d_data.get('score'), (int, float)) else 50)}
-    <p>{_esc(d_data.get('rationale', '')).replace(chr(10), '<br>')}</p>
-    <ul>
-        <li>Slack メッセージ数: {slack.get('total_messages', 0)}</li>
-        <li>アクティブチャンネル: {slack.get('channel_count', 0)}</li>
-        <li>Drive ドキュメント作成数: {drive.get('total', 0)}</li>
-    </ul>
-
-    <h3>e. AI ツール活用・コミュニケーション — {e_data.get('score', '—')} / 100 (重み 10%)</h3>
-    {_score_bar(e_data.get('score', 50) if isinstance(e_data.get('score'), (int, float)) else 50)}
-    <p>{_esc(e_data.get('rationale', '')).replace(chr(10), '<br>')}</p>
-    <ul><li>AI キーワード言及数: {slack.get('ai_keyword_mentions', 0)}</li></ul>
-</div>"""
+    return table + "\n<h2>評価根拠</h2>\n" + details
 
 
 def _section_not_requirements(d: dict[str, Any]) -> str:
     calendar = d.get("calendar_data", {})
     return f"""\
-<div class="section">
-    <h2>5. NOT 要件の確認</h2>
-    <div class="not-requirement">
-        <p><strong>以下の項目は評価から適切に除外されています:</strong></p>
-        <ul>
-            <li>長時間労働・残業時間 → 評価対象外</li>
-            <li>MTG 参加数: {calendar.get('total_events', '—')} 件 → スコアに反映していません</li>
-        </ul>
-        <p style="font-size:10px; color:#718096;">
-            ※ Slack メッセージ数はポジティブ指標として d カテゴリに含めています。
-        </p>
-    </div>
+<div class="not-req">
+    <strong>NOT 要件 (評価対象外):</strong>
+    長時間労働・残業時間、MTG 参加数 ({calendar.get('total_events', '—')} 件) はスコアに含めていません。
 </div>"""
 
 
-def _section_overall(d: dict[str, Any]) -> str:
+def _section_actions(d: dict[str, Any]) -> str:
     qual = d.get("qualitative", {})
     strengths = qual.get("strengths", [])
     improvements = qual.get("improvements", [])
+    actions = qual.get("recommended_actions_next_month", [])
+
     s_html = "".join(f"<li>{_esc(s)}</li>" for s in strengths)
     i_html = "".join(f"<li>{_esc(i)}</li>" for i in improvements)
-
-    breakdown = d.get("score_breakdown", {})
-    rows = ""
-    for key, label, weight in [
-        ("a", "Tier1 KPI", "30%"),
-        ("b", "Tier2 KPI", "25%"),
-        ("c", "アクションアイテム", "20%"),
-        ("d", "業務定性", "15%"),
-        ("e", "AI/コミュニケーション", "10%"),
-    ]:
-        score = breakdown.get(key, {}).get("score", "—")
-        weighted = breakdown.get(key, {}).get("weighted", "—")
-        rows += f"<tr><td>{label}</td><td>{weight}</td><td>{score}</td><td>{weighted}</td></tr>"
-
-    return f"""\
-<div class="section">
-    <h2>6. 総合評価</h2>
-    <table>
-        <tr><th>カテゴリ</th><th>重み</th><th>スコア</th><th>加重</th></tr>
-        {rows}
-        <tr style="font-weight:bold; background:#edf2f7;">
-            <td>総合</td><td>100%</td><td colspan="2">{d['overall_score']:.1f}</td>
-        </tr>
-    </table>
-
-    <h3>強み</h3>
-    <ul>{s_html if s_html else '<li>—</li>'}</ul>
-    <h3>改善点</h3>
-    <ul>{i_html if i_html else '<li>—</li>'}</ul>
-</div>"""
-
-
-def _section_next_actions(d: dict[str, Any]) -> str:
-    qual = d.get("qualitative", {})
-    actions = qual.get("recommended_actions_next_month", [])
     a_html = "".join(f"<li>{_esc(a)}</li>" for a in actions)
+
     return f"""\
-<div class="section">
-    <h2>7. 来月の推奨アクション</h2>
-    <ul>{a_html if a_html else '<li>—</li>'}</ul>
-</div>"""
+<h2>総合所見</h2>
+<table style="border:none;">
+<tr><td style="border:none; vertical-align:top; width:50%;"><strong>強み</strong><ul>{s_html or '<li>—</li>'}</ul></td>
+<td style="border:none; vertical-align:top;"><strong>改善点</strong><ul>{i_html or '<li>—</li>'}</ul></td></tr>
+</table>
+
+<h2>来月の推奨アクション</h2>
+<ul>{a_html or '<li>—</li>'}</ul>"""
 
 
 def _score_bar(score: float | int) -> str:
     s = max(0, min(100, float(score)))
-    color = "#38a169" if s >= 80 else "#d69e2e" if s >= 60 else "#e53e3e"
+    color = "#38a169" if s >= 70 else "#d69e2e" if s >= 50 else "#e53e3e"
     return (
-        f'<div class="score-bar score-bar-bg">'
+        f'<div class="score-bar-bg">'
         f'<div class="score-bar-fill" style="width:{s}%; background:{color};"></div>'
         f"</div>"
     )
 
 
 def _esc(text: str) -> str:
-    """HTML エスケープ。"""
     return (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
