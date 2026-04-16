@@ -27,14 +27,12 @@ def count_documents_created(
 ) -> dict[str, Any]:
     svc = _service(sa_file)
 
+    # 期間内のファイルを全取得し、作成者 or 最終編集者でフィルタ
+    # 共有ドライブでは owners フィルタや createdBy クエリが使えないため
     q_parts = [
-        f"createdTime >= '{period_start.isoformat()}T00:00:00'",
-        f"createdTime <= '{period_end.isoformat()}T23:59:59'",
-        "trashed = false",
+        f"modifiedTime >= '{period_start.isoformat()}T00:00:00'",
+        f"trashed = false",
     ]
-
-    # 共有ドライブでは owners フィルタが使えないので、
-    # lastModifyingUser で後からフィルタする
     query = " and ".join(q_parts)
 
     files: list[dict[str, Any]] = []
@@ -45,10 +43,10 @@ def count_documents_created(
             svc.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType, createdTime, owners, lastModifyingUser)",
+                fields="nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, owners, lastModifyingUser, createdByMe)",
                 pageSize=1000,
                 pageToken=page_token or "",
-                orderBy="createdTime desc",
+                orderBy="modifiedTime desc",
                 includeItemsFromAllDrives=True,
                 supportsAllDrives=True,
                 corpora="allDrives",
@@ -61,9 +59,15 @@ def count_documents_created(
             break
 
     # 対象ユーザでフィルタ (owners or lastModifyingUser)
+    # + 期間内に作成されたもの (createdTime で再フィルタ)
     owner_lower = owner_email.lower()
+    period_start_str = f"{period_start.isoformat()}T00:00:00"
+    period_end_str = f"{period_end.isoformat()}T23:59:59"
     filtered = []
     for f in files:
+        created = f.get("createdTime", "")
+        if created < period_start_str or created > period_end_str:
+            continue
         owners = [o.get("emailAddress", "").lower() for o in f.get("owners", [])]
         last_mod = (f.get("lastModifyingUser") or {}).get("emailAddress", "").lower()
         if owner_lower in owners or owner_lower == last_mod:
