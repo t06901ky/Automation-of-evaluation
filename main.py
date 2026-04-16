@@ -98,11 +98,17 @@ def _collect_and_evaluate(
 
     # 4. Slack
     print("[4/7] Slack 活動を取得中 (全チャンネル)...")
-    slack_data = slack_collector.fetch_user_messages(
-        cfg.slack_bot_token, cfg.target_email, period_start, period_end
-    )
-    print(f"       → {slack_data.get('total_messages', 0)} メッセージ, "
-          f"{slack_data.get('channel_count', 0)} チャンネル")
+    try:
+        slack_data = slack_collector.fetch_user_messages(
+            cfg.slack_bot_token, cfg.target_email, period_start, period_end
+        )
+        print(f"       → {slack_data.get('total_messages', 0)} メッセージ, "
+              f"{slack_data.get('channel_count', 0)} チャンネル")
+    except Exception as e:
+        print(f"       ⚠️ Slack 取得失敗 (スキップ): {e}")
+        slack_data = {"total_messages": 0, "channel_count": 0,
+                      "ai_keyword_mentions": 0, "ai_keyword_examples": [],
+                      "sample_messages": [], "error": str(e)}
 
     # 5. Drive
     print("[5/7] Drive ドキュメントを集計中...")

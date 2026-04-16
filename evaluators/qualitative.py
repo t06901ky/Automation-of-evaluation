@@ -43,6 +43,17 @@ SYSTEM_PROMPT = """\
 - スコアは 0〜100 の整数で返す (100 が最高)。
 - 各スコアの rationale に根拠データを明記する。
 - AI コメントは日本語で、具体的に書く。
+- 必ず以下の JSON 形式のみで応答する (説明文なし、JSON のみ):
+```json
+{
+  "c_action_items": {"score": 整数, "rationale": "根拠"},
+  "d_business_qualitative": {"score": 整数, "rationale": "根拠"},
+  "e_ai_and_communication": {"score": 整数, "rationale": "根拠"},
+  "strengths": ["強み1", "強み2"],
+  "improvements": ["改善点1", "改善点2"],
+  "recommended_actions_next_month": ["アクション1", "アクション2"]
+}
+```
 """
 
 # 構造化出力の JSON Schema
@@ -52,7 +63,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "c_action_items": {
             "type": "object",
             "properties": {
-                "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                "score": {"type": "integer"},
                 "rationale": {"type": "string"},
             },
             "required": ["score", "rationale"],
@@ -61,7 +72,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "d_business_qualitative": {
             "type": "object",
             "properties": {
-                "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                "score": {"type": "integer"},
                 "rationale": {"type": "string"},
             },
             "required": ["score", "rationale"],
@@ -70,7 +81,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "e_ai_and_communication": {
             "type": "object",
             "properties": {
-                "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                "score": {"type": "integer"},
                 "rationale": {"type": "string"},
             },
             "required": ["score", "rationale"],
@@ -146,12 +157,6 @@ def evaluate_qualitative(
         thinking={"type": "enabled", "budget_tokens": 3000},
         system=system_blocks,
         messages=[{"role": "user", "content": user_text}],
-        output_config={
-            "format": {
-                "type": "json_schema",
-                "schema": OUTPUT_SCHEMA,
-            }
-        },
     )
 
     text = next(
@@ -161,7 +166,15 @@ def evaluate_qualitative(
     if not text:
         raise RuntimeError("Claude 応答に text ブロックがない")
 
-    result = json.loads(text)
+    # JSON ブロックを抽出 (```json ... ``` で囲まれている場合に対応)
+    import re
+    json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    json_str = json_match.group(1) if json_match else text
+    # 先頭の非 JSON テキストを除去
+    brace_start = json_str.find("{")
+    if brace_start > 0:
+        json_str = json_str[brace_start:]
+    result = json.loads(json_str)
     result["_usage"] = {
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
