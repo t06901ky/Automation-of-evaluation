@@ -221,8 +221,8 @@ def _build_user_prompt(
         f"- AI キーワード言及数: {slack_data.get('ai_keyword_mentions', 0)}",
     ]
 
-    # Slack サンプル
-    samples = slack_data.get("sample_messages", [])
+    # Slack サンプル (最大 50 件に絞る)
+    samples = slack_data.get("sample_messages", [])[:50]
     if samples:
         sections.append("")
         sections.append("### Slack 投稿サンプル (最大 100 件)")
@@ -236,20 +236,14 @@ def _build_user_prompt(
         for ex in ai_examples:
             sections.append(f"- {ex}")
 
-    # Drive
+    # Drive (集計のみ。一覧は送らない)
     sections.append("")
-    sections.append("## Google Drive ドキュメント作成")
+    sections.append("## Google Drive ドキュメント作成 (チーム全体)")
     sections.append(f"- 作成数: {drive_data.get('total', 0)}")
     by_type = drive_data.get("by_type", {})
     if by_type:
         for t, c in by_type.items():
             sections.append(f"  - {t}: {c}")
-    files = drive_data.get("files", [])
-    if files:
-        sections.append("")
-        sections.append("### 作成ドキュメント一覧 (最大 50 件)")
-        for f in files:
-            sections.append(f"- {f.get('name')} ({f.get('mimeType')}, {f.get('createdTime')})")
 
     # Calendar
     sections.append("")
@@ -259,8 +253,8 @@ def _build_user_prompt(
     events = calendar_data.get("events", [])
     if events:
         sections.append("")
-        sections.append("### 主要 MTG (上位 30 件)")
-        for e in events[:30]:
+        sections.append("### 主要 MTG (上位 15 件)")
+        for e in events[:15]:
             sections.append(
                 f"- {e.get('start', '')} ({e.get('duration_minutes', 0)}min) "
                 f"{e.get('summary', '')}"
