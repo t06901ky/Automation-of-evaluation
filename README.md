@@ -1,78 +1,30 @@
-# Automation of Evaluation — HR 評価自動化アプリケーション
+# VALANCE 月次評価自動化システム
 
-> 「誰もが尊重され、公平に評価される組織でありたい。
-> 立場や背景に関わらず、機会が与えられ、成果や挑戦が正しく認められる環境をつくる。
-> 互いの違いを力に変え、信頼と透明性を基盤としたチームで、真にフェアな社会を体現していきます。」
-
-このフェアネス憲章を貫くため、HR 業務のうち最も時間がかかる「評価」について
-**工数をほぼゼロにする** ことを目指したアプリケーションです。
+COO（Kota）を対象とした PoC。毎月 1 日に前月分のデータを自動収集し、
+Claude が定性評価を行い、PDF レポートを生成する。
 
 ---
 
-## 何ができるか
+## 評価項目と重みづけ
 
-Google Workspace / Slack / Google カレンダーから評価対象者のデータを自動収集し、
-グレード定義に照らし合わせた評価レポート (Markdown + JSON) を生成します。
-
-### 評価項目 (優先順位順)
-
-| | カテゴリ | データソース | 重み (既定) |
+| | カテゴリ | 重み | データソース |
 |---|---|---|---|
-| **a** | tier1 KPI (売上、ARR、OTR、HC) の定量 | KPI シート | 0.30 |
-| **b** | tier2 KPI (churn、MQL/SQL、コストダウン) | KPI シート | 0.20 |
-| **c** | 重要 countable アクション (ケーススタディ、ISMS、特許等) | アクションアイテムシート | 0.18 |
-| **d** | 業務系定性 (事業推進貢献、有効アウトプット、mtg/Ops 貢献) | カレンダー + Slack | 0.13 |
-| **e** | その他定性 (AI ツール活用、社内コミュニケーション) | Slack | 0.09 |
-| **f** | not 要件 (業務量 × 「私頑張った！」アピールの無力化) | カレンダー + Slack | 0.05 (減点) |
-| **g** | 上司からの補足コメント | コメントシート | 0.05 |
+| **a** | Tier1 KPI 達成率 (売上・ARR・OTR・HC) | 30% | Google Sheets |
+| **b** | Tier2 KPI 達成率 (churn・MQL・SQL・コスト) | 25% | Google Sheets |
+| **c** | アクションアイテム完了数 | 20% | Google Slides + Claude |
+| **d** | 業務定性 (Slack 貢献・Drive 成果物・MTG の質) | 15% | Slack + Drive + Calendar |
+| **e** | AI ツール活用・コミュニケーション速度 | 10% | Slack (キーワード検出) |
 
-評価エンジンは Claude (Opus 4.6) を用い、**事実ベース・グレード定義準拠** で判定します。
-重みづけは `app/models.py` の `DEFAULT_WEIGHTS` を編集すれば変更できます。
-
----
-
-## アーキテクチャ
-
-```
-┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
-│ Google Calendar    │  │ Google Sheets      │  │ Slack              │
-│ (会議・会議貢献)     │  │ (グレード定義/KPI/   │  │ (コミュニケーション   │
-│                    │  │  アクションアイテム)  │  │  量・質・時間外活動)  │
-└─────────┬──────────┘  └─────────┬──────────┘  └─────────┬──────────┘
-          │                       │                       │
-          ▼                       ▼                       ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                    Collectors (app/collectors/)                       │
-│   calendar_collector / sheets_collector / slack_collector             │
-└──────────────────────────┬───────────────────────────────────────────┘
-                           ▼
-                  EvaluationContext (Pydantic)
-                           ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│              Evaluator (app/evaluators/engine.py)                     │
-│   1. payload_builder で Markdown 化                                   │
-│   2. Claude (フェアネス憲章 + グレード定義は prompt cache 済み) に投入   │
-│   3. JSON Schema で構造化出力 → カテゴリスコア取得                     │
-│   4. 重みづけして総合スコア                                           │
-└──────────────────────────┬───────────────────────────────────────────┘
-                           ▼
-                EvaluationReport → Markdown + JSON
-```
-
-### Claude API 設計のポイント
-
-- **prompt caching**: グレード定義 + フェアネス憲章は system プロンプトに置き
-  `cache_control: ephemeral` を付与。同じグレードの評価が複数走るときに
-  入力トークンコストを ~90% 削減します (`app/llm/claude_client.py`)。
-- **構造化出力 (`output_config.format`)**: スコア / 根拠 / フラグを JSON Schema で
-  固定し、後段のレポート生成を堅牢にします。
-- **adaptive thinking**: 微妙な定性判断には Claude が自動で思考時間を確保します。
+### NOT 要件 (評価に含めない・減点もしない)
+- 長時間労働・残業時間
+- MTG 参加数
+- ※ Slack メッセージ数はポジティブ指標として d に含める
 
 ---
 
 ## セットアップ
 
-### 1. 依存関係のインストール
+### 1. 依存インストール
 
 ```bash
 python -m venv .venv
@@ -80,185 +32,143 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Google Workspace の準備
+> **WeasyPrint のシステム依存**: PDF 生成に WeasyPrint を使用。
+> Ubuntu: `sudo apt install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0`
+> macOS: `brew install pango`
+> 詳細: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html
 
-評価では他のメンバーのカレンダー・シートにアクセスする必要があるので、
-**サービスアカウント + Domain-Wide Delegation** を使います。
+### 2. Google サービスアカウント
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
+1. [GCP Console](https://console.cloud.google.com/) でプロジェクト作成
 2. 以下 API を有効化:
-   - Google Calendar API
    - Google Sheets API
+   - Google Slides API
    - Google Drive API
-   - Admin SDK API (任意。従業員一覧の自動取得に利用)
-3. サービスアカウントを作成し、JSON キーをダウンロード
-4. Google Workspace 管理コンソール → セキュリティ → API コントロール →
-   ドメイン全体の委任 で、サービスアカウントの Client ID と次のスコープを登録:
+   - Google Calendar API
+3. サービスアカウントを作成 → JSON キーをダウンロード
+4. `credentials/service_account.json` に配置
+5. **以下のリソースに SA メールアドレスの閲覧権限を付与:**
+   - グレード定義シート: `16N2D1hCDlx2Vl-Ez19WrA_lK5YLueSnaDvivL7rhSfU`
+   - KPI シート: `1Lo_udJ5YeYlacpMOyJRHMNSl-Ph7tilL`
+   - 事業計画スライド: `1eJ6BB14aYBnWXa1kCUS0BDXIe29cNbb8`
+   - 対象者のカレンダー
+   - Drive フォルダ (ドキュメント集計用)
 
-   ```
-   https://www.googleapis.com/auth/calendar.readonly
-   https://www.googleapis.com/auth/spreadsheets.readonly
-   https://www.googleapis.com/auth/drive.metadata.readonly
-   https://www.googleapis.com/auth/admin.directory.user.readonly
-   ```
+### 3. Slack Bot
 
-5. JSON キーを `./credentials/service_account.json` に配置
+[Slack API](https://api.slack.com/apps) で App を作成。
 
-### 3. Slack の準備
+必要な Bot Token Scopes:
+- `channels:history` / `channels:read`
+- `groups:history` / `groups:read`
+- `users:read` / `users:read.email`
 
-[Slack API](https://api.slack.com/apps) で App を作成し、以下スコープを付与:
+ワークスペースにインストールして Bot Token (xoxb-) を取得。
 
-- **Bot Token Scopes**: `users:read`, `users:read.email`, `channels:history`,
-  `channels:read`, `groups:read`
-- **User Token Scopes**: `search:read` (search.messages を使うため必須)
-
-ワークスペースにインストールし、Bot Token (xoxb-) と User Token (xoxp-) を取得。
-
-### 4. Anthropic API キー
-
-[Anthropic Console](https://console.anthropic.com/) で API キーを発行。
-
-### 5. 環境変数
-
-`.env.example` を `.env` にコピーして埋めます:
+### 4. 環境変数
 
 ```bash
 cp .env.example .env
-$EDITOR .env
+# .env を編集して各キーを埋める
 ```
 
-主な項目:
-
-| 変数 | 内容 |
+| 変数 | 説明 |
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API キー |
-| `CLAUDE_MODEL` | 既定 `claude-opus-4-6` |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | サービスアカウント JSON のパス |
-| `GOOGLE_DELEGATED_USER` | 委任先のドメイン管理者メール |
-| `GRADE_DEFINITION_SHEET_ID` | グレード定義シートの ID |
-| `KPI_SHEET_ID` | KPI シートの ID (任意) |
-| `ACTION_ITEMS_SHEET_ID` | アクションアイテム / 上司コメントシートの ID (任意) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | SA JSON パス |
 | `SLACK_BOT_TOKEN` | xoxb- |
-| `SLACK_USER_TOKEN` | xoxp- |
-| `EVALUATION_WINDOW_DAYS` | 評価対象期間 (既定 90 日) |
-
-### 6. シート構造
-
-各シートで期待する列名は以下の通り。1 行目をヘッダにしてください。
-
-#### 従業員マスタ (`employees`)
-| email | name | grade | department | manager_email |
-|---|---|---|---|---|
-
-#### KPI (`kpis`)
-| name | tier | target | actual | owner_email | notes |
-|---|---|---|---|---|---|
-
-#### アクションアイテム (`action_items`)
-| title | owner_email | status | due_date | completed_date | importance | description |
-|---|---|---|---|---|---|---|
-
-#### 上司コメント (`manager_notes`)
-| employee_email | manager_email | text | created_at |
-|---|---|---|---|
-
-シート名 (タブ名) は CLI / `sheets_collector` の引数で変更可能です。
+| `TARGET_USER_EMAIL` | 評価対象者メール |
+| `TARGET_USER_NAME` | 表示名 |
+| `TARGET_USER_GRADE` | グレード (例: `役員`) |
+| `TARGET_CALENDAR_ID` | カレンダー ID (通常はメール) |
+| `DRIVE_FOLDER_ID` | Drive フォルダ ID (任意) |
 
 ---
 
 ## 使い方
 
-### 1 名のみ評価
+### 本番実行 (前月分を評価)
 
 ```bash
-python -m app.cli evaluate \
-  --email alice@example.com \
-  --name "Alice" \
-  --grade G3 \
-  --department Sales \
-  --manager-email bob@example.com
+python main.py
 ```
 
-実行後、以下が `./reports/` に生成されます:
+`output/` に以下が生成される:
+- `2026年3月_Kota_evaluation.pdf` — PDF レポート
+- `2026年3月_Kota_evaluation.json` — 構造化データ (監査用)
 
-- `2026-04-15_alice_at_example_com.md` — 人間が読むレポート
-- `2026-04-15_alice_at_example_com.json` — 構造化データ (集計用)
-
-### 全員一括評価 (従業員シートを起点に)
+### Dry Run (ダミーデータで PDF の見た目確認)
 
 ```bash
-python -m app.cli evaluate-all \
-  --employees-sheet-id <EMPLOYEES_SHEET_ID>
+python main.py --dry-run
 ```
+
+API を叩かずにダミーデータで PDF のみ生成。レイアウト確認用。
+
+---
+
+## PDF レポートの構成
+
+1. **表紙** — 評価対象者・評価期間・総合スコア
+2. **グレード定義** — 適用されたグレードの期待値
+3. **定量 KPI** — Tier1/Tier2 の計画 vs 実績、達成率
+4. **アクションアイテム** — 事業計画目標に対する進捗
+5. **定性評価** — Slack/Drive/AI 活用の Claude 評価
+6. **NOT 要件** — 除外項目の明示
+7. **総合評価** — 加重平均スコア・強み・改善点
+8. **来月の推奨アクション**
 
 ---
 
 ## ディレクトリ構成
 
 ```
-.
-├── app/
-│   ├── cli.py                  # CLI エントリーポイント (Typer)
-│   ├── config.py               # .env ベースの設定
-│   ├── models.py               # Pydantic データモデル
-│   ├── collectors/             # データ収集
-│   │   ├── google_auth.py
-│   │   ├── calendar_collector.py
-│   │   ├── sheets_collector.py
-│   │   └── slack_collector.py
-│   ├── evaluators/             # 評価ロジック
-│   │   ├── engine.py           # オーケストレータ
-│   │   ├── payload_builder.py  # LLM 入力を Markdown 化
-│   │   └── report_writer.py    # MD / JSON 出力
-│   └── llm/
-│       └── claude_client.py    # フェアネス憲章 + prompt caching
+├── main.py                  # エントリーポイント
+├── config.py                # API 認証・設定・データソース ID
+├── collectors/
+│   ├── sheets.py            # Google Sheets (グレード定義・KPI)
+│   ├── slides.py            # Google Slides (アクションアイテム)
+│   ├── slack.py             # Slack (投稿内容・メッセージ数・AI キーワード)
+│   ├── drive.py             # Google Drive (ドキュメント作成数)
+│   └── calendar.py          # Google Calendar (MTG 情報)
+├── evaluators/
+│   ├── quantitative.py      # KPI スコアリング (a, b)
+│   └── qualitative.py       # Claude 定性評価 (c, d, e)
+├── report/
+│   └── pdf_generator.py     # HTML → PDF (WeasyPrint)
+├── credentials/             # .gitignore 対象
+├── output/                  # 生成 PDF 保存先
 ├── requirements.txt
-├── .env.example
-└── README.md
+└── .env.example
 ```
 
 ---
 
-## カスタマイズ
+## 未解決事項
 
-### 重みづけを変える
+### AI ツール使用頻度の取得方法
+Claude/Gemini/NotebookLM の使用履歴は API から直接取得できない。
+現在の実装では **Slack 投稿内の AI キーワード言及数** をプロキシ指標として使用。
+検出キーワード: `claude`, `gemini`, `notebooklm`, `chatgpt`, `copilot`, `ai` 等。
 
-`app/models.py` の `DEFAULT_WEIGHTS` を編集。合計が 1.0 になるようにしてください。
+### KPI 実績値の入力方法
+事業計画の「計画値」はシートから自動取得。「実績値」の入力方法は要検討:
+- 案 A: KPI シートに実績列を追加して手入力
+- 案 B: 別途入力フォーム (Google Forms) を用意
 
-```python
-DEFAULT_WEIGHTS = {
-    EvaluationCategory.A_TIER1_KPI: 0.40,  # KPI 偏重に
-    EvaluationCategory.B_TIER2_KPI: 0.20,
-    ...
-}
-```
-
-### フェアネス憲章 / 評価原則を変える
-
-`app/llm/claude_client.py` の `FAIRNESS_PREAMBLE` を編集。
-ここを変えると prompt cache が無効になるので、運用安定後は変更を控えめに。
-
-### 別のデータソースを足す
-
-`app/collectors/` に新しいモジュールを追加し、`EvaluationContext` を拡張、
-`payload_builder.py` に新セクションを追加するだけで LLM が利用してくれます。
+### Slack 全チャンネルのレート制限
+Slack API の Tier 2 制限 (20 req/min) に対応済み:
+- ページネーション + `tenacity` によるリトライ
+- チャンネル間に 1.2 秒のスリープ
 
 ---
 
-## 設計上の意思決定
+## 評価ロジック
 
-- **なぜ Pull 型?** Slack / Google Workspace の Webhook を待たずに「評価したいタイミングで」
-  全データを取りに行ける方が運用が単純。
-- **なぜ Markdown payload?** Claude が最も得意とする入力形式で、人間レビューも容易。
-- **なぜ JSON Schema?** スコア・根拠・フラグの揺れを排除し、レポート生成と監査を堅牢化。
-- **なぜ Prompt Caching?** 同期間に同グレードを複数評価することが多く、コストが ~90% 下がる。
-
----
-
-## ロードマップ (Update 中)
-
-- [ ] 勤怠データの統合 (HR システム連携)
-- [ ] Google Drive 上のドキュメント生成数を d/e カテゴリに反映
-- [ ] 評価レポートの Slack DM 配信
-- [ ] 360 度フィードバックの取り込み (peer review)
-- [ ] バイアス検査 (同グレード間でスコア分布の異常検知)
+1. **グレード確認**: シートからグレード定義を読み込み、評価基準として使用
+2. **データ収集**: 前月 1 日〜末日を対象に各 API からデータ取得
+3. **定量評価 (a・b)**: 計画値 vs 実績値の達成率をスコア化 (達成率 100% → 80 点、120% 以上 → 100 点)
+4. **定性評価 (c・d・e)**: 収集データを Claude が読みグレード定義に照らして 0〜100 でスコアリング
+5. **総合スコア**: 重みづけ加重平均で算出
+6. **AI コメント**: 強み・改善点・来月の推奨アクションを Claude が生成
+7. **PDF 出力**: 日本語レポートとして保存
