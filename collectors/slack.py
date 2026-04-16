@@ -55,17 +55,15 @@ def resolve_user_id(client: WebClient, email: str) -> str | None:
     wait=wait_fixed(3),
 )
 def _safe_api_call(method, **kwargs):
-    """レート制限を考慮した API 呼び出し。
-
-    SlackApiError で retry_after があれば待つ。
-    """
+    """レート制限 (429) のみリトライ。それ以外のエラーは即 raise。"""
     try:
         return method(**kwargs)
     except SlackApiError as e:
         if e.response.status_code == 429:
             retry_after = int(e.response.headers.get("Retry-After", "5"))
             time.sleep(retry_after)
-        raise
+            raise  # tenacity がリトライ
+        raise  # not_in_channel 等はリトライせず即 raise
 
 
 def fetch_all_channels(client: WebClient) -> list[dict[str, Any]]:
@@ -122,7 +120,13 @@ def fetch_user_messages(
     ai_mentions = 0
     ai_examples: list[str] = []
 
-    for ch in channels:
+    # Bot が参加しているチャンネルのみ処理
+    member_channels = [ch for ch in channels if ch.get("is_member", False)]
+    skipped = len(channels) - len(member_channels)
+    if skipped:
+        print(f"       (Bot 未参加チャンネル {skipped} 件をスキップ)")
+
+    for ch in member_channels:
         ch_id = ch["id"]
         ch_name = ch.get("name", ch_id)
         ch_messages = _fetch_channel_messages(client, ch_id, user_id, oldest, latest)
