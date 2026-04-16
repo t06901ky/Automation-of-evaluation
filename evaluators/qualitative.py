@@ -143,7 +143,10 @@ def evaluate_qualitative(
             "type": "text",
             "text": (
                 "# 適用するグレード定義\n"
-                f"対象者: {target_name} (グレード: {target_grade})\n\n"
+                f"対象者: {target_name}\n"
+                f"役職: 取締役COO (Chief Operating Officer)\n"
+                f"グレード: {target_grade}\n\n"
+                "※ この対象者は CEO ではなく COO です。評価文中で CEO と書かないでください。\n\n"
                 + grade_definition
             ),
             "cache_control": {"type": "ephemeral"},
@@ -271,7 +274,9 @@ def _build_user_prompt(
     sections.append(
         "上記データに基づき、以下カテゴリを 0〜100 でスコアリングし、"
         "根拠と合わせて返してください:\n"
-        "- a_tier1_kpi: Tier1 KPI 達成率 (売上・ARR・OTR・HC)。事業計画の計画値と実績シートの実績値を比較して評価。\n"
+        "- a_tier1_kpi: Tier1 KPI 達成率 (売上・ARR・OTR・HC)。\n"
+        "  ⚠️ 「予実」シートの Cash in 行を最重視すること。予算と実際の Cash in を比較し達成率を判断。\n"
+        "  事業計画シートは年間計画、実績シートは月次明細、予実シートは計画 vs 実際のサマリ。\n"
         "- b_tier2_kpi: Tier2 KPI 達成率 (churn・MQL・SQL・コスト)。データがない項目は 50 (中立) とする。\n"
         "- c_action_items: アクションアイテム完了度\n"
         "- d_business_qualitative: 業務定性 (Slack 貢献・Drive 成果物・MTG の質)\n"

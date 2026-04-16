@@ -84,7 +84,7 @@ def _collect_and_evaluate(
     grade_full = sheets_collector.fetch_grade_definition(cfg.google_sa_file, GRADE_SHEET_ID)
     grade_section = sheets_collector.extract_grade_section(grade_full, cfg.target_grade)
 
-    # 2. KPI (計画 + 実績)
+    # 2. KPI (計画 + 実績 + 予実)
     print("[2/7] KPI データを取得中...")
     kpi_plan = sheets_collector.fetch_kpi_raw_text(
         cfg.google_sa_file, KPI_SHEET_ID, sheet_name="事業計画v001"
@@ -92,7 +92,16 @@ def _collect_and_evaluate(
     kpi_actual = sheets_collector.fetch_kpi_raw_text(
         cfg.google_sa_file, KPI_SHEET_ID, sheet_name="実績"
     )
-    kpi_raw = f"## 事業計画 (年間計画値)\n{kpi_plan}\n\n## 実績 (月次)\n{kpi_actual}"
+    kpi_yojitsu = sheets_collector.fetch_kpi_raw_text(
+        cfg.google_sa_file, KPI_SHEET_ID, sheet_name="予実"
+    )
+    kpi_raw = (
+        "## 事業計画 (年間計画値)\n" + kpi_plan + "\n\n"
+        "## 実績 (月次)\n" + kpi_actual + "\n\n"
+        "## 予実 (計画 vs 実績の差分)\n"
+        "※ このシートの Cash in / Cash out の予実を重視して KPI 達成を判断すること。\n"
+        + kpi_yojitsu
+    )
     # KPI は構造が複雑なので Claude に直接スコアリングさせる
     kpi_scores = {
         "tier1": {"score": None, "details": []},
