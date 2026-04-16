@@ -23,11 +23,11 @@ GRADE_SHEET_GID = "979341057"
 
 # 事業計画 KPI スプレッドシート (Tier1 / Tier2)
 KPI_SHEET_ID = "1Lo_udJ5YeYlacpMOyJRHMNSl-Ph7tilL"
-KPI_SHEET_GID = "707240166"
+KPI_SHEET_GID = 566803041  # URL の gid パラメータ
 
-# 事業計画エグゼクティブサマリ (アクションアイテム目標)
+# 事業進捗スライド (pptx) — アクションアイテム目標
 ACTION_ITEMS_PRESENTATION_ID = "1eJ6BB14aYBnWXa1kCUS0BDXIe29cNbb8"
-ACTION_ITEMS_SLIDE_ID = "p37"
+ACTION_ITEMS_SLIDE_ID = "g36ed0b3356e_0_83"  # ネイティブ Slides 用 (pptx では全スライド読み込み)
 
 # Claude モデル
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
