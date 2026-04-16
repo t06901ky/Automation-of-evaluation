@@ -30,7 +30,7 @@ ACTION_ITEMS_PRESENTATION_ID = "1eJ6BB14aYBnWXa1kCUS0BDXIe29cNbb8"
 ACTION_ITEMS_SLIDE_ID = "g36ed0b3356e_0_83"  # ネイティブ Slides 用 (pptx では全スライド読み込み)
 
 # Claude モデル
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = "claude-sonnet-4-6"
 
 
 # ============================================================

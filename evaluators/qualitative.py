@@ -78,56 +78,42 @@ SYSTEM_PROMPT = """\
 """
 
 # 構造化出力の JSON Schema
+_SCORE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "score": {"type": "integer"},
+        "rationale": {"type": "string"},
+    },
+    "required": ["score", "rationale"],
+    "additionalProperties": False,
+}
+
 OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "c_action_items": {
+        "a_tier1_kpi": _SCORE_SCHEMA,
+        "b_tier2_kpi": _SCORE_SCHEMA,
+        "c_action_items": _SCORE_SCHEMA,
+        "d_business_qualitative": _SCORE_SCHEMA,
+        "e_ai_and_communication": _SCORE_SCHEMA,
+        "value_comment": {
             "type": "object",
             "properties": {
-                "score": {"type": "integer"},
-                "rationale": {"type": "string"},
+                "fairness": {"type": "string"},
+                "independence": {"type": "string"},
+                "resilience": {"type": "string"},
             },
-            "required": ["score", "rationale"],
+            "required": ["fairness", "independence", "resilience"],
             "additionalProperties": False,
         },
-        "d_business_qualitative": {
-            "type": "object",
-            "properties": {
-                "score": {"type": "integer"},
-                "rationale": {"type": "string"},
-            },
-            "required": ["score", "rationale"],
-            "additionalProperties": False,
-        },
-        "e_ai_and_communication": {
-            "type": "object",
-            "properties": {
-                "score": {"type": "integer"},
-                "rationale": {"type": "string"},
-            },
-            "required": ["score", "rationale"],
-            "additionalProperties": False,
-        },
-        "strengths": {
-            "type": "array",
-            "items": {"type": "string"},
-        },
-        "improvements": {
-            "type": "array",
-            "items": {"type": "string"},
-        },
-        "recommended_actions_next_month": {
-            "type": "array",
-            "items": {"type": "string"},
-        },
+        "strengths": {"type": "array", "items": {"type": "string"}},
+        "improvements": {"type": "array", "items": {"type": "string"}},
+        "recommended_actions_next_month": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
-        "c_action_items",
-        "d_business_qualitative",
-        "e_ai_and_communication",
-        "strengths",
-        "improvements",
-        "recommended_actions_next_month",
+        "a_tier1_kpi", "b_tier2_kpi",
+        "c_action_items", "d_business_qualitative", "e_ai_and_communication",
+        "value_comment", "strengths", "improvements", "recommended_actions_next_month",
     ],
     "additionalProperties": False,
 }
@@ -177,10 +163,16 @@ def evaluate_qualitative(
 
     response = client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=8000,
-        thinking={"type": "enabled", "budget_tokens": 5000},
+        max_tokens=16000,
+        thinking={"type": "adaptive"},
         system=system_blocks,
         messages=[{"role": "user", "content": user_text}],
+        output_config={
+            "format": {
+                "type": "json_schema",
+                "schema": OUTPUT_SCHEMA,
+            }
+        },
     )
 
     text = next(
@@ -190,38 +182,8 @@ def evaluate_qualitative(
     if not text:
         raise RuntimeError("Claude 応答に text ブロックがない")
 
-    # JSON ブロックを抽出 (```json ... ``` で囲まれている場合に対応)
-    import re
-    json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    json_str = json_match.group(1) if json_match else text
-    # 先頭の非 JSON テキストを除去
-    brace_start = json_str.find("{")
-    if brace_start > 0:
-        json_str = json_str[brace_start:]
-    # 末尾の非 JSON テキストを除去
-    brace_end = json_str.rfind("}")
-    if brace_end >= 0:
-        json_str = json_str[:brace_end + 1]
-
-    try:
-        result = json.loads(json_str)
-    except json.JSONDecodeError:
-        # JSON が壊れている場合、改行内のエスケープ問題を修正して再試行
-        json_str_fixed = re.sub(r'(?<!\\)\n', ' ', json_str)
-        try:
-            result = json.loads(json_str_fixed)
-        except json.JSONDecodeError:
-            # それでもダメならデフォルト値を返す
-            print("       ⚠️ Claude の JSON パースに失敗。デフォルトスコアを使用します。")
-            result = {
-                "a_tier1_kpi": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
-                "b_tier2_kpi": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
-                "c_action_items": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
-                "d_business_qualitative": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
-                "e_ai_and_communication": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
-                "strengths": [], "improvements": [],
-                "recommended_actions_next_month": [],
-            }
+    # 構造化出力 (output_config.format) により確実に valid JSON
+    result = json.loads(text)
     result["_usage"] = {
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
