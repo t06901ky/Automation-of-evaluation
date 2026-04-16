@@ -84,11 +84,21 @@ def _collect_and_evaluate(
     grade_full = sheets_collector.fetch_grade_definition(cfg.google_sa_file, GRADE_SHEET_ID)
     grade_section = sheets_collector.extract_grade_section(grade_full, cfg.target_grade)
 
-    # 2. KPI
+    # 2. KPI (計画 + 実績)
     print("[2/7] KPI データを取得中...")
-    kpi_data = sheets_collector.fetch_kpi_data(cfg.google_sa_file, KPI_SHEET_ID)
-    kpi_raw = sheets_collector.fetch_kpi_raw_text(cfg.google_sa_file, KPI_SHEET_ID)
-    kpi_scores = score_kpis(kpi_data, kpi_raw)
+    kpi_plan = sheets_collector.fetch_kpi_raw_text(
+        cfg.google_sa_file, KPI_SHEET_ID, sheet_name="事業計画v001"
+    )
+    kpi_actual = sheets_collector.fetch_kpi_raw_text(
+        cfg.google_sa_file, KPI_SHEET_ID, sheet_name="実績"
+    )
+    kpi_raw = f"## 事業計画 (年間計画値)\n{kpi_plan}\n\n## 実績 (月次)\n{kpi_actual}"
+    # KPI は構造が複雑なので Claude に直接スコアリングさせる
+    kpi_scores = {
+        "tier1": {"score": None, "details": []},
+        "tier2": {"score": None, "details": []},
+        "raw_text": kpi_raw,
+    }
 
     # 3. アクションアイテム
     print("[3/7] アクションアイテム (Slides) を取得中...")
@@ -139,12 +149,18 @@ def _collect_and_evaluate(
         period_label=period_label,
     )
 
-    # 総合スコア算出
-    a_score = kpi_scores["tier1"]["score"]
-    b_score = kpi_scores["tier2"]["score"]
+    # 総合スコア算出 (a/b も Claude がスコアリング)
+    a_score = qualitative.get("a_tier1_kpi", {}).get("score", 50)
+    b_score = qualitative.get("b_tier2_kpi", {}).get("score", 50)
     c_score = qualitative.get("c_action_items", {}).get("score", 50)
     d_score = qualitative.get("d_business_qualitative", {}).get("score", 50)
     e_score = qualitative.get("e_ai_and_communication", {}).get("score", 50)
+
+    # KPI スコアを kpi_scores にも反映 (PDF 表示用)
+    kpi_scores["tier1"]["score"] = a_score
+    kpi_scores["tier1"]["details"] = [{"name": "Tier1 KPI", "rationale": qualitative.get("a_tier1_kpi", {}).get("rationale", "")}]
+    kpi_scores["tier2"]["score"] = b_score
+    kpi_scores["tier2"]["details"] = [{"name": "Tier2 KPI", "rationale": qualitative.get("b_tier2_kpi", {}).get("rationale", "")}]
 
     overall = (
         a_score * 0.30

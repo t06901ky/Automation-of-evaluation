@@ -46,6 +46,8 @@ SYSTEM_PROMPT = """\
 - 必ず以下の JSON 形式のみで応答する (説明文なし、JSON のみ):
 ```json
 {
+  "a_tier1_kpi": {"score": 整数, "rationale": "根拠 (売上・ARR・OTR・HC の達成状況)"},
+  "b_tier2_kpi": {"score": 整数, "rationale": "根拠 (churn・MQL・SQL・コストの達成状況)"},
   "c_action_items": {"score": 整数, "rationale": "根拠"},
   "d_business_qualitative": {"score": 整数, "rationale": "根拠"},
   "e_ai_and_communication": {"score": 整数, "rationale": "根拠"},
@@ -262,11 +264,14 @@ def _build_user_prompt(
     sections.append(
         "上記データに基づき、以下カテゴリを 0〜100 でスコアリングし、"
         "根拠と合わせて返してください:\n"
+        "- a_tier1_kpi: Tier1 KPI 達成率 (売上・ARR・OTR・HC)。事業計画の計画値と実績シートの実績値を比較して評価。\n"
+        "- b_tier2_kpi: Tier2 KPI 達成率 (churn・MQL・SQL・コスト)。データがない項目は 50 (中立) とする。\n"
         "- c_action_items: アクションアイテム完了度\n"
         "- d_business_qualitative: 業務定性 (Slack 貢献・Drive 成果物・MTG の質)\n"
         "- e_ai_and_communication: AI ツール活用度・コミュニケーション速度\n"
         "\nまた strengths / improvements / recommended_actions_next_month も生成してください。\n"
-        "\n⚠️ MTG 参加「数」は NOT 要件です。スコアの根拠にしないでください。"
+        "\n⚠️ MTG 参加「数」は NOT 要件です。スコアの根拠にしないでください。\n"
+        "⚠️ KPI の計画値は年間値 (FY26 = 1年目) です。3月は年度の9ヶ月目 (7月始まり) なので、月按分で達成率を判断してください。"
     )
 
     return "\n".join(sections)
