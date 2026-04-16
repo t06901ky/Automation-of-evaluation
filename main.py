@@ -84,23 +84,24 @@ def _collect_and_evaluate(
     grade_full = sheets_collector.fetch_grade_definition(cfg.google_sa_file, GRADE_SHEET_ID)
     grade_section = sheets_collector.extract_grade_section(grade_full, cfg.target_grade)
 
-    # 2. KPI (計画 + 実績 + 予実)
+    # 2. KPI (計画 + 予実 + 実績サマリ)
     print("[2/7] KPI データを取得中...")
     kpi_plan = sheets_collector.fetch_kpi_raw_text(
         cfg.google_sa_file, KPI_SHEET_ID, sheet_name="事業計画v001"
     )
-    kpi_actual = sheets_collector.fetch_kpi_raw_text(
-        cfg.google_sa_file, KPI_SHEET_ID, sheet_name="実績"
-    )
     kpi_yojitsu = sheets_collector.fetch_kpi_raw_text(
         cfg.google_sa_file, KPI_SHEET_ID, sheet_name="予実"
     )
+    # 実績シートは大きいので先頭30行 (売上・コスト・P/L のサマリ行) に絞る
+    kpi_actual_full = sheets_collector.fetch_kpi_raw_text(
+        cfg.google_sa_file, KPI_SHEET_ID, sheet_name="実績"
+    )
+    kpi_actual = "\n".join(kpi_actual_full.splitlines()[:30])
     kpi_raw = (
-        "## 事業計画 (年間計画値)\n" + kpi_plan + "\n\n"
-        "## 実績 (月次)\n" + kpi_actual + "\n\n"
-        "## 予実 (計画 vs 実績の差分)\n"
-        "※ このシートの Cash in / Cash out の予実を重視して KPI 達成を判断すること。\n"
-        + kpi_yojitsu
+        "## 予実 (計画 vs 実績の差分) ← 最重視\n"
+        + kpi_yojitsu + "\n\n"
+        "## 実績 (月次サマリ: 売上・コスト・P/L)\n" + kpi_actual + "\n\n"
+        "## 事業計画 (年間計画値)\n" + kpi_plan
     )
     # KPI は構造が複雑なので Claude に直接スコアリングさせる
     kpi_scores = {
@@ -111,9 +112,11 @@ def _collect_and_evaluate(
 
     # 3. アクションアイテム
     print("[3/7] アクションアイテム (Slides) を取得中...")
-    action_items_text = slides_collector.fetch_slide_text(
+    action_items_full = slides_collector.fetch_slide_text(
         cfg.google_sa_file, ACTION_ITEMS_PRESENTATION_ID, ACTION_ITEMS_SLIDE_ID
     )
+    # スライド全文は大きいので 4000 文字に制限
+    action_items_text = action_items_full[:4000] if len(action_items_full) > 4000 else action_items_full
 
     # 4. Slack
     print("[4/7] Slack 活動を取得中 (全チャンネル)...")
