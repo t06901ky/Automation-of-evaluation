@@ -71,6 +71,7 @@ def _build_html(d: dict[str, Any]) -> str:
 {_section_header(d)}
 {_section_grade(d)}
 {_section_scores(d)}
+{_section_values(d)}
 {_section_not_requirements(d)}
 {_section_actions(d)}
 <p class="meta">生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | VALANCE 評価自動化システム</p>
@@ -101,12 +102,21 @@ def _section_header(d: dict[str, Any]) -> str:
 
 
 def _section_grade(d: dict[str, Any]) -> str:
-    grade_text = _esc(d.get("grade_definition", "")).replace("\n", "<br>")
-    # 長すぎる場合は切り詰め
-    if len(grade_text) > 800:
-        grade_text = grade_text[:800] + "…"
+    # グレード定義から対象グレードの行だけ抽出
+    grade_raw = d.get("grade_definition", "")
+    grade_num = d.get("target_grade", "")
+    lines = grade_raw.splitlines()
+    grade_lines = []
+    for line in lines:
+        if line.startswith(str(grade_num) + "\t") or (grade_lines and not line.startswith(("---", str(int(grade_num) - 1) if grade_num.isdigit() else "NEVER"))):
+            grade_lines.append(line)
+            if line.startswith("---"):
+                break
+    grade_text = _esc("\n".join(grade_lines) if grade_lines else grade_raw).replace("\n", "<br>")
+    if len(grade_text) > 600:
+        grade_text = grade_text[:600] + "…"
     return f"""\
-<h2>グレード定義 ({_esc(d.get('target_grade', ''))})</h2>
+<h2>グレード定義 (Grade {_esc(grade_num)})</h2>
 <div class="grade-box">{grade_text}</div>"""
 
 
@@ -153,6 +163,21 @@ def _section_scores(d: dict[str, Any]) -> str:
 </div>"""
 
     return table + "\n<h2>評価根拠</h2>\n" + details
+
+
+def _section_values(d: dict[str, Any]) -> str:
+    qual = d.get("qualitative", {})
+    vc = qual.get("value_comment", {})
+    if not vc:
+        return ""
+    return f"""\
+<h2>Values 観点</h2>
+<table>
+<tr><th style="width:20%;">Value</th><th>コメント</th></tr>
+<tr><td><strong>Fairness</strong></td><td>{_esc(vc.get('fairness', '—'))}</td></tr>
+<tr><td><strong>Independence</strong></td><td>{_esc(vc.get('independence', '—'))}</td></tr>
+<tr><td><strong>Resilience</strong></td><td>{_esc(vc.get('resilience', '—'))}</td></tr>
+</table>"""
 
 
 def _section_not_requirements(d: dict[str, Any]) -> str:
