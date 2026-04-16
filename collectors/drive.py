@@ -1,6 +1,6 @@
 """Google Drive API で対象ユーザのドキュメント作成数を集計する。
 
-共有ドライブ (Shared Drive) にも対応。
+共有ドライブ (Shared Drive) 対応: 各ドライブを個別にクエリして高速化。
 """
 
 from __future__ import annotations
@@ -27,47 +27,68 @@ def count_documents_created(
 ) -> dict[str, Any]:
     svc = _service(sa_file)
 
-    # 期間内のファイルを全取得し、作成者 or 最終編集者でフィルタ
-    # 共有ドライブでは owners フィルタや createdBy クエリが使えないため
-    q_parts = [
-        f"modifiedTime >= '{period_start.isoformat()}T00:00:00'",
-        f"trashed = false",
-    ]
-    query = " and ".join(q_parts)
+    all_files: list[dict[str, Any]] = []
 
-    files: list[dict[str, Any]] = []
-    page_token: str | None = None
+    # 共有ドライブ一覧を取得し、各ドライブを個別にクエリ
+    try:
+        drives_resp = svc.drives().list(pageSize=50).execute()
+        shared_drives = drives_resp.get("drives", [])
+    except Exception:
+        shared_drives = []
 
+    query = (
+        f"createdTime >= '{period_start.isoformat()}T00:00:00' "
+        f"and createdTime <= '{period_end.isoformat()}T23:59:59' "
+        f"and trashed = false "
+        f"and mimeType != 'application/vnd.google-apps.folder'"
+    )
+
+    for drive_info in shared_drives:
+        drive_id = drive_info["id"]
+        page_token = None
+        while True:
+            resp = (
+                svc.files()
+                .list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, mimeType, createdTime, lastModifyingUser)",
+                    pageSize=200,
+                    pageToken=page_token or "",
+                    driveId=drive_id,
+                    corpora="drive",
+                    includeItemsFromAllDrives=True,
+                    supportsAllDrives=True,
+                )
+                .execute()
+            )
+            all_files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+    # マイドライブも検索
+    page_token = None
     while True:
         resp = (
             svc.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, owners, lastModifyingUser)",
-                pageSize=1000,
+                fields="nextPageToken, files(id, name, mimeType, createdTime, owners, lastModifyingUser)",
+                pageSize=200,
                 pageToken=page_token or "",
-                orderBy="modifiedTime desc",
-                includeItemsFromAllDrives=True,
-                supportsAllDrives=True,
-                corpora="allDrives",
+                corpora="user",
             )
             .execute()
         )
-        files.extend(resp.get("files", []))
+        all_files.extend(resp.get("files", []))
         page_token = resp.get("nextPageToken")
         if not page_token:
             break
 
-    # 対象ユーザでフィルタ (owners or lastModifyingUser)
-    # + 期間内に作成されたもの (createdTime で再フィルタ)
+    # 対象ユーザでフィルタ
     owner_lower = owner_email.lower()
-    period_start_str = f"{period_start.isoformat()}T00:00:00"
-    period_end_str = f"{period_end.isoformat()}T23:59:59"
     filtered = []
-    for f in files:
-        created = f.get("createdTime", "")
-        if created < period_start_str or created > period_end_str:
-            continue
+    for f in all_files:
         owners = [o.get("emailAddress", "").lower() for o in f.get("owners", [])]
         last_mod = (f.get("lastModifyingUser") or {}).get("emailAddress", "").lower()
         if owner_lower in owners or owner_lower == last_mod:
