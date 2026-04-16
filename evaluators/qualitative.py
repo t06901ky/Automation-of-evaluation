@@ -165,8 +165,8 @@ def evaluate_qualitative(
 
     response = client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=4000,
-        thinking={"type": "enabled", "budget_tokens": 3000},
+        max_tokens=8000,
+        thinking={"type": "enabled", "budget_tokens": 5000},
         system=system_blocks,
         messages=[{"role": "user", "content": user_text}],
     )
@@ -186,7 +186,30 @@ def evaluate_qualitative(
     brace_start = json_str.find("{")
     if brace_start > 0:
         json_str = json_str[brace_start:]
-    result = json.loads(json_str)
+    # 末尾の非 JSON テキストを除去
+    brace_end = json_str.rfind("}")
+    if brace_end >= 0:
+        json_str = json_str[:brace_end + 1]
+
+    try:
+        result = json.loads(json_str)
+    except json.JSONDecodeError:
+        # JSON が壊れている場合、改行内のエスケープ問題を修正して再試行
+        json_str_fixed = re.sub(r'(?<!\\)\n', ' ', json_str)
+        try:
+            result = json.loads(json_str_fixed)
+        except json.JSONDecodeError:
+            # それでもダメならデフォルト値を返す
+            print("       ⚠️ Claude の JSON パースに失敗。デフォルトスコアを使用します。")
+            result = {
+                "a_tier1_kpi": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
+                "b_tier2_kpi": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
+                "c_action_items": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
+                "d_business_qualitative": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
+                "e_ai_and_communication": {"score": 50, "rationale": "JSON パースエラーのためデフォルト"},
+                "strengths": [], "improvements": [],
+                "recommended_actions_next_month": [],
+            }
     result["_usage"] = {
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
