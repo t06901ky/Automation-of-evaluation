@@ -85,14 +85,10 @@ def count_documents_created(
         if not page_token:
             break
 
-    # 対象ユーザでフィルタ
-    owner_lower = owner_email.lower()
-    filtered = []
-    for f in all_files:
-        owners = [o.get("emailAddress", "").lower() for o in f.get("owners", [])]
-        last_mod = (f.get("lastModifyingUser") or {}).get("emailAddress", "").lower()
-        if owner_lower in owners or owner_lower == last_mod:
-            filtered.append(f)
+    # 共有ドライブではファイルの個人所有者を特定できないため、
+    # 期間内に作成された全ファイルをチームの成果物としてカウントする
+    # (COO 評価では組織全体のアウトプット量が指標として妥当)
+    filtered = all_files
 
     # MIME タイプ別集計
     type_labels = {
