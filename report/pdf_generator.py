@@ -29,27 +29,27 @@ body {
     font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
     font-size: 11px;
     line-height: 1.7;
-    color: #222;
+    color: #0f0f26;
 }
-h1 { font-size: 20px; color: #1a365d; border-bottom: 3px solid #1a365d; padding-bottom: 6px; margin-bottom: 16px; }
-h2 { font-size: 14px; color: #2c5282; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+h1 { font-size: 20px; color: #0f0f26; border-bottom: 3px solid #02c491; padding-bottom: 6px; margin-bottom: 16px; }
+h2 { font-size: 14px; color: #0f0f26; margin-top: 20px; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-th, td { border: 1px solid #cbd5e0; padding: 6px 10px; text-align: left; font-size: 10px; }
-th { background: #edf2f7; font-weight: bold; }
+th, td { border: 1px solid #d0d0d0; padding: 6px 10px; text-align: left; font-size: 10px; }
+th { background: #f0faf7; font-weight: bold; color: #0f0f26; }
 .score-box {
-    display: inline-block; background: #1a365d; color: #fff;
+    display: inline-block; background: #0f0f26; color: #02c491;
     font-size: 32px; font-weight: bold; padding: 10px 28px; border-radius: 8px;
 }
 .header { text-align: center; margin-bottom: 20px; }
-.header p { margin: 4px 0; color: #718096; }
-.grade-box { background: #f7fafc; padding: 10px 14px; border-radius: 4px; font-size: 10px; margin: 8px 0; }
-.score-bar-bg { height: 14px; border-radius: 4px; background: #e2e8f0; width: 100%; margin: 4px 0; }
+.header p { margin: 4px 0; color: #555; }
+.grade-box { background: #f7fdfb; border-left: 3px solid #02c491; padding: 10px 14px; border-radius: 4px; font-size: 10px; margin: 8px 0; }
+.score-bar-bg { height: 14px; border-radius: 4px; background: #e8e8e8; width: 100%; margin: 4px 0; }
 .score-bar-fill { height: 14px; border-radius: 4px; }
-.not-req { background: #fff5f5; border-left: 4px solid #fc8181; padding: 8px 12px; margin: 10px 0; font-size: 10px; }
+.not-req { background: #fafafa; border-left: 4px solid #d0d0d0; padding: 8px 12px; margin: 10px 0; font-size: 10px; }
 ul { margin: 4px 0; padding-left: 18px; }
 li { margin: 2px 0; font-size: 10px; }
-.meta { color: #718096; font-size: 9px; margin-top: 20px; }
-.rationale { font-size: 10px; color: #4a5568; margin: 4px 0 12px 0; }
+.meta { color: #888; font-size: 9px; margin-top: 20px; }
+.rationale { font-size: 10px; color: #555; margin: 4px 0 12px 0; }
 """
 
 
@@ -148,7 +148,7 @@ def _section_scores(d: dict[str, Any]) -> str:
         score = breakdown.get(key, {}).get("score", "—")
         weighted = breakdown.get(key, {}).get("weighted", "—")
         rows += f"<tr><td><strong>{key}.</strong> {label}</td><td>{weight}</td><td>{score}</td><td>{weighted}</td></tr>"
-    rows += f'<tr style="font-weight:bold; background:#edf2f7;"><td>総合</td><td>100%</td><td colspan="2">{d["overall_score"]:.1f}</td></tr>'
+    rows += f'<tr style="font-weight:bold; background:#f0faf7;"><td>総合</td><td>100%</td><td colspan="2">{d["overall_score"]:.1f}</td></tr>'
 
     table = f"""\
 <h2>カテゴリ別スコア</h2>
@@ -163,7 +163,7 @@ def _section_scores(d: dict[str, Any]) -> str:
         q = qual.get(qual_key, {})
         score = q.get("score", "—")
         rationale = _esc(q.get("rationale", "データなし"))
-        color = "#38a169" if isinstance(score, (int, float)) and score >= 70 else "#d69e2e" if isinstance(score, (int, float)) and score >= 50 else "#e53e3e"
+        color = "#02c491" if isinstance(score, (int, float)) and score >= 70 else "#8abfad" if isinstance(score, (int, float)) and score >= 50 else "#0f0f26"
 
         details += f"""\
 <div style="margin-top:10px;">
@@ -222,7 +222,8 @@ def _section_actions(d: dict[str, Any]) -> str:
 
 def _score_bar(score: float | int) -> str:
     s = max(0, min(100, float(score)))
-    color = "#38a169" if s >= 70 else "#d69e2e" if s >= 50 else "#e53e3e"
+    # VALANCE GREEN (#02c491) for high, muted for mid, VALANCE BLACK tint for low
+    color = "#02c491" if s >= 70 else "#8abfad" if s >= 50 else "#0f0f26"
     return (
         f'<div class="score-bar-bg">'
         f'<div class="score-bar-fill" style="width:{s}%; background:{color};"></div>'
