@@ -13,17 +13,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from collectors.auth import build_service
 
 SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly"]
 
 
 def _service(sa_file: Path):
-    creds = service_account.Credentials.from_service_account_file(
-        str(sa_file), scopes=SCOPES
-    )
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    return build_service("drive", "v3", sa_file, SCOPES)
 
 
 def count_documents_created(

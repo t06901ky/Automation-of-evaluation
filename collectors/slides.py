@@ -8,17 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from collectors.auth import build_service
 
 SCOPES = ["https://www.googleapis.com/auth/presentations.readonly"]
 
 
 def _service(sa_file: Path):
-    creds = service_account.Credentials.from_service_account_file(
-        str(sa_file), scopes=SCOPES
-    )
-    return build("slides", "v1", credentials=creds, cache_discovery=False)
+    return build_service("slides", "v1", sa_file, SCOPES)
 
 
 def fetch_slide_text(
