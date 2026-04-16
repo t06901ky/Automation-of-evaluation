@@ -11,7 +11,7 @@ from typing import Any
 
 from collectors.auth import build_service
 
-SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def _service(sa_file: Path):
