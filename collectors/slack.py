@@ -67,13 +67,13 @@ def _safe_api_call(method, **kwargs):
 
 
 def fetch_all_channels(client: WebClient) -> list[dict[str, Any]]:
-    """Bot がアクセス可能な全チャンネル (public + private) を取得。"""
+    """Bot がアクセス可能な全チャンネル (public + private + DM + group DM) を取得。"""
     channels: list[dict[str, Any]] = []
     cursor = None
     while True:
         resp = _safe_api_call(
             client.conversations_list,
-            types="public_channel,private_channel",
+            types="public_channel,private_channel,im,mpim",
             limit=1000,
             cursor=cursor or "",
         )
@@ -82,6 +82,17 @@ def fetch_all_channels(client: WebClient) -> list[dict[str, Any]]:
         if not cursor:
             break
     return channels
+
+
+def _auto_join_public_channels(client: WebClient, channels: list[dict[str, Any]]) -> None:
+    """Bot 未参加の public チャンネルに自動参加。"""
+    for ch in channels:
+        if ch.get("is_channel") and not ch.get("is_member"):
+            try:
+                client.conversations_join(channel=ch["id"])
+                ch["is_member"] = True
+            except SlackApiError:
+                pass
 
 
 def fetch_user_messages(
@@ -110,8 +121,11 @@ def fetch_user_messages(
         return {"error": f"ユーザが見つからない: {target_email}"}
 
     channels = fetch_all_channels(client)
+
+    # public チャンネルに自動参加
+    _auto_join_public_channels(client, channels)
+
     oldest = _to_ts(period_start)
-    # period_end の翌日 00:00:00 まで
     latest = _to_ts(period_end + __import__("datetime").timedelta(days=1))
 
     total_messages = 0
@@ -120,15 +134,24 @@ def fetch_user_messages(
     ai_mentions = 0
     ai_examples: list[str] = []
 
-    # Bot が参加しているチャンネルのみ処理
-    member_channels = [ch for ch in channels if ch.get("is_member", False)]
+    # Bot が参加しているチャンネル + DM を処理
+    member_channels = [
+        ch for ch in channels
+        if ch.get("is_member", False) or ch.get("is_im", False) or ch.get("is_mpim", False)
+    ]
     skipped = len(channels) - len(member_channels)
     if skipped:
         print(f"       (Bot 未参加チャンネル {skipped} 件をスキップ)")
+    print(f"       対象: {len(member_channels)} チャンネル/DM")
 
     for ch in member_channels:
         ch_id = ch["id"]
-        ch_name = ch.get("name", ch_id)
+        if ch.get("is_im"):
+            ch_name = f"DM:{ch.get('user', ch_id)}"
+        elif ch.get("is_mpim"):
+            ch_name = ch.get("name", f"group-dm:{ch_id}")
+        else:
+            ch_name = ch.get("name", ch_id)
         ch_messages = _fetch_channel_messages(client, ch_id, user_id, oldest, latest)
 
         if not ch_messages:
