@@ -66,9 +66,9 @@ SYSTEM_PROMPT = """\
   "d_business_qualitative": {"score": 整数, "rationale": "根拠"},
   "e_ai_and_communication": {"score": 整数, "rationale": "根拠"},
   "value_comment": {
-    "fairness": "Fairness の観点からのコメント (1-2文)",
-    "independence": "Independence の観点からのコメント (1-2文)",
-    "resilience": "Resilience の観点からのコメント (1-2文)"
+    "fairness": "Fairness の観点からのコメント。必ず Slack 投稿・カレンダー・スライド等から具体的な行動事例を1つ以上引用すること。",
+    "independence": "Independence の観点からのコメント。必ず具体的な行動事例を1つ以上引用すること。",
+    "resilience": "Resilience の観点からのコメント。必ず具体的な行動事例を1つ以上引用すること。"
   },
   "strengths": ["強み1", "強み2"],
   "improvements": ["改善点1", "改善点2"],

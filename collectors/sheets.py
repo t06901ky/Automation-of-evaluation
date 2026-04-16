@@ -109,18 +109,34 @@ def fetch_grade_definition(
 
 
 def extract_grade_section(full_text: str, grade: str) -> str:
-    """特定グレード行を抽出。見つからなければ全体を返す。"""
+    """特定グレードの行だけを抽出。見つからなければ全体を返す。"""
     if not full_text:
         return ""
     lines = full_text.splitlines()
-    matched: list[str] = []
-    for i, line in enumerate(lines):
-        if grade in line:
-            start = max(0, i - 2)
-            end = min(len(lines), i + 8)
-            matched.extend(lines[start:end])
-            matched.append("---")
-    return "\n".join(matched) if matched else full_text
+
+    # ヘッダ行 (最初の数行) を保持
+    header_lines = []
+    for line in lines:
+        if line and line[0].isdigit() and "\t" in line[:3]:
+            break
+        header_lines.append(line)
+
+    # 対象グレードの行を「グレード番号\t」で始まる行から次のグレードまで
+    grade_lines = []
+    capturing = False
+    for line in lines:
+        if not capturing and line.startswith(grade + "\t"):
+            capturing = True
+            grade_lines.append(line)
+            continue
+        if capturing:
+            if len(line) > 0 and line[0].isdigit() and "\t" in line[:3]:
+                break
+            grade_lines.append(line)
+
+    if grade_lines:
+        return "\n".join(header_lines + grade_lines)
+    return full_text
 
 
 # ============================================================

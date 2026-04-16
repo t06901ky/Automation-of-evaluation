@@ -102,19 +102,29 @@ def _section_header(d: dict[str, Any]) -> str:
 
 
 def _section_grade(d: dict[str, Any]) -> str:
-    # グレード定義から対象グレードの行だけ抽出
     grade_raw = d.get("grade_definition", "")
-    grade_num = d.get("target_grade", "")
+    grade_num = str(d.get("target_grade", ""))
     lines = grade_raw.splitlines()
+
+    # 対象グレードの行を「グレード番号\t」で開始する行から、
+    # 次のグレード番号 (数字\t) が出るまで、または --- まで抽出
     grade_lines = []
+    capturing = False
     for line in lines:
-        if line.startswith(str(grade_num) + "\t") or (grade_lines and not line.startswith(("---", str(int(grade_num) - 1) if grade_num.isdigit() else "NEVER"))):
+        # 対象グレードの開始行
+        if not capturing and line.startswith(grade_num + "\t"):
+            capturing = True
             grade_lines.append(line)
+            continue
+        if capturing:
+            # 次のグレード行 (数字\tで始まる) または --- で終了
             if line.startswith("---"):
                 break
+            if len(line) > 0 and line[0].isdigit() and "\t" in line[:3]:
+                break
+            grade_lines.append(line)
+
     grade_text = _esc("\n".join(grade_lines) if grade_lines else grade_raw).replace("\n", "<br>")
-    if len(grade_text) > 600:
-        grade_text = grade_text[:600] + "…"
     return f"""\
 <h2>グレード定義 (Grade {_esc(grade_num)})</h2>
 <div class="grade-box">{grade_text}</div>"""
