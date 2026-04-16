@@ -43,7 +43,7 @@ def count_documents_created(
             svc.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, owners, lastModifyingUser, createdByMe)",
+                fields="nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, owners, lastModifyingUser)",
                 pageSize=1000,
                 pageToken=page_token or "",
                 orderBy="modifiedTime desc",
