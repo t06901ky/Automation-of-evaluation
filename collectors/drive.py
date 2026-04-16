@@ -1,10 +1,6 @@
 """Google Drive API で対象ユーザのドキュメント作成数を集計する。
 
-認証: サービスアカウント。
-- DRIVE_FOLDER_ID が指定されていれば、そのフォルダ内を検索
-- 指定がなければ SA がアクセス可能な全ファイルから検索
-
-注意: SA にフォルダ / ファイルの閲覧権限が付与されていないとヒットしない。
+共有ドライブ (Shared Drive) にも対応。
 """
 
 from __future__ import annotations
@@ -29,27 +25,16 @@ def count_documents_created(
     period_end: date,
     folder_id: str = "",
 ) -> dict[str, Any]:
-    """対象ユーザが期間内に作成したドキュメント数を返す。
-
-    Returns:
-        {
-            "total": int,
-            "by_type": {mime_type_label: count},
-            "files": [{"name": ..., "mimeType": ..., "createdTime": ...}, ...]
-        }
-    """
     svc = _service(sa_file)
 
-    # Drive API の query 構築
     q_parts = [
-        f"'{owner_email}' in owners",
         f"createdTime >= '{period_start.isoformat()}T00:00:00'",
         f"createdTime <= '{period_end.isoformat()}T23:59:59'",
         "trashed = false",
     ]
-    if folder_id:
-        q_parts.append(f"'{folder_id}' in parents")
 
+    # 共有ドライブでは owners フィルタが使えないので、
+    # lastModifyingUser で後からフィルタする
     query = " and ".join(q_parts)
 
     files: list[dict[str, Any]] = []
@@ -60,10 +45,13 @@ def count_documents_created(
             svc.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType, createdTime)",
+                fields="nextPageToken, files(id, name, mimeType, createdTime, owners, lastModifyingUser)",
                 pageSize=1000,
                 pageToken=page_token or "",
                 orderBy="createdTime desc",
+                includeItemsFromAllDrives=True,
+                supportsAllDrives=True,
+                corpora="allDrives",
             )
             .execute()
         )
@@ -71,6 +59,15 @@ def count_documents_created(
         page_token = resp.get("nextPageToken")
         if not page_token:
             break
+
+    # 対象ユーザでフィルタ (owners or lastModifyingUser)
+    owner_lower = owner_email.lower()
+    filtered = []
+    for f in files:
+        owners = [o.get("emailAddress", "").lower() for o in f.get("owners", [])]
+        last_mod = (f.get("lastModifyingUser") or {}).get("emailAddress", "").lower()
+        if owner_lower in owners or owner_lower == last_mod:
+            filtered.append(f)
 
     # MIME タイプ別集計
     type_labels = {
@@ -81,13 +78,13 @@ def count_documents_created(
         "application/pdf": "PDF",
     }
     by_type: dict[str, int] = {}
-    for f in files:
+    for f in filtered:
         mime = f.get("mimeType", "")
         label = type_labels.get(mime, "その他")
         by_type[label] = by_type.get(label, 0) + 1
 
     return {
-        "total": len(files),
+        "total": len(filtered),
         "by_type": by_type,
         "files": [
             {
@@ -95,6 +92,6 @@ def count_documents_created(
                 "mimeType": f.get("mimeType"),
                 "createdTime": f.get("createdTime"),
             }
-            for f in files[:50]  # レポート用に最大 50 件
+            for f in filtered[:50]
         ],
     }
