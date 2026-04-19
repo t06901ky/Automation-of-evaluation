@@ -1,7 +1,8 @@
-"""VALANCE 月次人事評価自動化 — エントリーポイント。
+"""VALANCE 月次/週次人事評価自動化 — エントリーポイント。
 
 使い方:
     python main.py              # 前月分を評価 (デフォルト)
+    python main.py --weekly     # 前週 (月〜金) を評価
     python main.py --dry-run    # API を叩かずにダミーデータで PDF だけ生成
 """
 
@@ -25,6 +26,7 @@ from config import (
     KPI_SHEET_ID,
     Config,
     get_evaluation_period,
+    get_weekly_period,
 )
 from evaluators.qualitative import evaluate_qualitative
 from evaluators.quantitative import score_kpis
@@ -32,8 +34,9 @@ from report.pdf_generator import generate_pdf
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="VALANCE 月次評価自動化")
+    parser = argparse.ArgumentParser(description="VALANCE 月次/週次評価自動化")
     parser.add_argument("--dry-run", action="store_true", help="ダミーデータで PDF だけ生成")
+    parser.add_argument("--weekly", action="store_true", help="前週 (月〜金) を評価対象にする")
     args = parser.parse_args()
 
     cfg = Config()
@@ -44,10 +47,19 @@ def main() -> None:
             print(f"  - {e}")
         sys.exit(1)
 
-    period_start, period_end = get_evaluation_period()
-    period_label = f"{period_start.year}年{period_start.month}月"
+    if args.weekly:
+        period_start, period_end = get_weekly_period()
+        period_label = (
+            f"{period_start.year}年{period_start.month}月"
+            f"{period_start.day}日〜{period_end.month}月{period_end.day}日週"
+        )
+        report_type = "週次"
+    else:
+        period_start, period_end = get_evaluation_period()
+        period_label = f"{period_start.year}年{period_start.month}月"
+        report_type = "月次"
 
-    print(f"=== VALANCE 月次評価 ({period_label}) ===")
+    print(f"=== VALANCE {report_type}評価 ({period_label}) ===")
     print(f"対象者: {cfg.target_name} ({cfg.target_email})")
     print(f"期間  : {period_start} 〜 {period_end}")
     print()

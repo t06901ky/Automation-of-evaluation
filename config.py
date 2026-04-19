@@ -88,3 +88,14 @@ def get_evaluation_period(reference: date | None = None) -> tuple[date, date]:
     last_of_prev_month = first_of_this_month - relativedelta(days=1)
     first_of_prev_month = last_of_prev_month.replace(day=1)
     return first_of_prev_month, last_of_prev_month
+
+
+def get_weekly_period(reference: date | None = None) -> tuple[date, date]:
+    """前週月曜〜金曜を返す。reference が None なら今日基準。土曜実行を想定。"""
+    today = reference or date.today()
+    # weekday(): 月=0 … 土=5 → 今週月曜を求めてから 7 日戻す
+    days_since_monday = today.weekday()
+    this_monday = today - relativedelta(days=days_since_monday)
+    last_monday = this_monday - relativedelta(days=7)
+    last_friday = last_monday + relativedelta(days=4)
+    return last_monday, last_friday
