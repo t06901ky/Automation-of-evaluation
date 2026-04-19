@@ -1,63 +1,24 @@
-name: Weekly Report Generation
+name: Weekly Report Reminder
 
 on:
   schedule:
     # 毎週土曜 09:00 JST (00:00 UTC)
     - cron: '0 0 * * 6'
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'ダミーデータで実行 (true/false)'
-        required: false
-        default: 'false'
 
 jobs:
-  generate-weekly-report:
+  send-reminder:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: Write service account credentials
-        run: |
-          mkdir -p credentials
-          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > credentials/service_account.json
-
-      - name: Run coo-weekly skill
+      - name: Send Slack DM to kota.yamaguchi
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_SERVICE_ACCOUNT_FILE: ./credentials/service_account.json
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          TARGET_USER_EMAIL: ${{ secrets.TARGET_USER_EMAIL }}
-          TARGET_USER_NAME: ${{ secrets.TARGET_USER_NAME }}
-          TARGET_USER_GRADE: ${{ secrets.TARGET_USER_GRADE }}
-          TARGET_CALENDAR_ID: ${{ secrets.TARGET_CALENDAR_ID }}
-          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            claude --dangerously-skip-permissions -p "/coo-weekly --dry-run"
-          else
-            claude --dangerously-skip-permissions -p "/coo-weekly"
-          fi
-
-      - name: Upload report artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: weekly-report-${{ github.run_id }}
-          path: output/
-          retention-days: 90
+          curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "channel": "U09BZPBMS02",
+              "text": "📊 週次レポートの時間です！\n今週のKPIデータを入力して `/coo-weekly` を実行してください。\n\n例：「MRR 160万（北國銀行80・三森屋30・eeemo50）。週次資料作って」"
+            }'
